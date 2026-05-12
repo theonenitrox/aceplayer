@@ -8,27 +8,42 @@
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: #000; }
         iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
         
-        #sync-status {
-            position: fixed; top: 15px; left: 50%; transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.85); color: #00ff00; padding: 10px 20px;
-            border-radius: 30px; font-family: 'Courier New', monospace; z-index: 1000;
-            border: 1px solid #333; font-size: 14px; pointer-events: none;
+        #status-overlay {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: rgba(15, 15, 15, 0.85);
+            backdrop-filter: blur(5px);
+            color: #fff;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            font-size: 13px;
+            letter-spacing: 0.5px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            transition: opacity 0.3s;
         }
 
-        #sync-btn { 
-            position: fixed; bottom: 25px; right: 25px; z-index: 1001; 
-            padding: 15px 25px; background: #5865F2; color: white; 
-            border: none; border-radius: 12px; cursor: pointer; 
-            font-family: sans-serif; font-weight: bold;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.6); transition: 0.2s;
+        .dot {
+            height: 6px;
+            width: 6px;
+            background-color: #ff4b4b;
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 8px #ff4b4b;
         }
-        #sync-btn:hover { background: #4752c4; transform: scale(1.05); }
     </style>
 </head>
 <body>
     <iframe id="player" src="" allowfullscreen></iframe>
-    <div id="sync-status">Connecting to Party...</div>
-    <button id="sync-btn">JUMP TO HOST</button>
+    <div id="status-overlay">
+        <span class="dot"></span>
+        <span id="clock-text">WAITING FOR HOST</span>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -50,67 +65,42 @@
         const movieId = params.get('id');
         const roomId = params.get('room');
         const player = document.getElementById('player');
-        const statusDiv = document.getElementById('sync-status');
+        const clockText = document.getElementById('clock-text');
         
-        let isRemoteUpdate = false;
-        let lastKnownTime = 0;
+        let lastLoggedTime = 0;
 
         if (movieId && roomId) {
             player.src = `https://www.vidking.net/embed/movie/${movieId}`;
             const roomRef = ref(db, 'rooms/' + roomId);
 
-            // 1. BROADCAST: Listen to player and update Firebase every second
+            // SEND: Throttled update to Firebase
             window.addEventListener("message", (event) => {
                 try {
                     const msg = JSON.parse(event.data);
-                    // Only the "Host" (person interacting) sends updates
-                    if (msg.type === "PLAYER_EVENT" && !isRemoteUpdate) {
-                        const d = msg.data;
-                        // This sends timeupdate (every sec) + clicks
-                        set(roomRef, {
-                            event: d.event,
-                            time: d.currentTime,
-                            timestamp: Date.now()
-                        });
+                    if (msg.data && msg.data.currentTime !== undefined) {
+                        const currentTime = Math.floor(msg.data.currentTime);
+                        
+                        // Only update Firebase every 5 seconds to keep it clean
+                        if (currentTime % 5 === 0 && currentTime !== lastLoggedTime) {
+                            lastLoggedTime = currentTime;
+                            set(roomRef, { time: currentTime });
+                        }
                     }
                 } catch (e) {}
             });
 
-            // 2. RECEIVE: Update the UI when Firebase changes
+            // RECEIVE: Live update UI
             onValue(roomRef, (snapshot) => {
                 const data = snapshot.val();
-                if (data) {
-                    lastKnownTime = data.time;
+                if (data && data.time !== undefined) {
                     const mins = Math.floor(data.time / 60);
                     const secs = Math.floor(data.time % 60).toString().padStart(2, '0');
-                    
-                    statusDiv.innerText = `HOST AT: ${mins}:${secs} [${data.event.toUpperCase()}]`;
-                    
-                    // We set this so the receiver doesn't bounce the message back to Firebase
-                    isRemoteUpdate = true;
-                    setTimeout(() => { isRemoteUpdate = false; }, 800);
+                    clockText.innerText = `SYNC: ${mins}:${secs}`;
                 }
             });
 
-            // 3. JUMP LOGIC: Try every known method to force the iframe to seek
-            document.getElementById('sync-btn').addEventListener('click', () => {
-                console.log("Attempting Force Sync to:", lastKnownTime);
-                
-                // We send multiple variations because different players use different keys
-                const syncPackets = [
-                    { command: "seek", value: lastKnownTime },
-                    { command: "seeked", value: lastKnownTime },
-                    { method: "setCurrentTime", value: lastKnownTime },
-                    { event: "command", func: "seekTo", args: [lastKnownTime] }
-                ];
-
-                syncPackets.forEach(pkg => {
-                    player.contentWindow.postMessage(JSON.stringify(pkg), "*");
-                });
-            });
-
         } else {
-            statusDiv.innerText = "ERROR: MISSING DATA";
+            clockText.innerText = "LINK ERROR";
         }
     </script>
 </body>

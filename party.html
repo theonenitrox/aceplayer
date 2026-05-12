@@ -7,10 +7,32 @@
     <style>
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: #000; }
         iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+        
+        /* Style for the Sync Button */
+        #sync-btn { 
+            position: fixed; 
+            bottom: 20px; 
+            right: 20px; 
+            z-index: 1001; 
+            padding: 12px 20px; 
+            background: #5865F2; /* Discord Blue */
+            color: white; 
+            border: none; 
+            border-radius: 8px; 
+            cursor: pointer; 
+            font-family: sans-serif;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: transform 0.2s;
+        }
+        #sync-btn:hover { transform: scale(1.05); background: #4752c4; }
+        #sync-btn:active { transform: scale(0.95); }
     </style>
 </head>
 <body>
     <iframe id="player" src="" allowfullscreen></iframe>
+    
+    <button id="sync-btn">Jump to Host</button>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
@@ -33,8 +55,9 @@
         const movieId = params.get('id');
         const roomId = params.get('room');
         const player = document.getElementById('player');
-
+        
         let isRemoteUpdate = false;
+        let lastKnownTime = 0;
 
         if (movieId && roomId) {
             player.src = `https://www.vidking.net/embed/movie/${movieId}`;
@@ -46,35 +69,27 @@
                     const msg = JSON.parse(event.data);
                     if (msg.type === "PLAYER_EVENT" && !isRemoteUpdate) {
                         const d = msg.data;
-                        if (["play", "pause", "seeked"].includes(d.event)) {
-                            set(roomRef, {
-                                event: d.event,
-                                time: d.currentTime,
-                                timestamp: Date.now()
-                            });
+                        if (["play", "pause", "seeked", "timeupdate"].includes(d.event)) {
+                            // We don't want to spam 'timeupdate', so maybe only sync on actions
+                            if (d.event !== "timeupdate") {
+                                set(roomRef, {
+                                    event: d.event,
+                                    time: d.currentTime,
+                                    timestamp: Date.now()
+                                });
+                            }
                         }
                     }
                 } catch (e) {}
             });
 
-            // 2. LISTEN TO FIREBASE (Update UI & try to Sync Player)
+            // 2. LISTEN TO FIREBASE (Update Status Bar)
             onValue(roomRef, (snapshot) => {
                 const data = snapshot.val();
                 if (data) {
+                    lastKnownTime = data.time;
                     isRemoteUpdate = true;
 
-                    // Try different command formats to catch the player's API
-                    const commands = [
-                        { command: data.event, value: data.time },
-                        { method: data.event, arg: data.time },
-                        { event: 'command', func: data.event, args: [data.time] }
-                    ];
-                    
-                    commands.forEach(cmd => {
-                        player.contentWindow.postMessage(JSON.stringify(cmd), "*");
-                    });
-
-                    // Update the Status Bar overlay
                     let statusDiv = document.getElementById('sync-status');
                     if (!statusDiv) {
                         statusDiv = document.createElement('div');
@@ -83,13 +98,27 @@
                         document.body.appendChild(statusDiv);
                     }
                     
-                    const minutes = Math.floor(data.time / 60);
-                    const seconds = Math.floor(data.time % 60).toString().padStart(2, '0');
-                    statusDiv.innerText = `Party Status: ${data.event.toUpperCase()} at ${minutes}:${seconds}`;
+                    const mins = Math.floor(data.time / 60);
+                    const secs = Math.floor(data.time % 60).toString().padStart(2, '0');
+                    statusDiv.innerText = `Host: ${data.event.toUpperCase()} at ${mins}:${secs}`;
 
                     setTimeout(() => { isRemoteUpdate = false; }, 1500);
                 }
             });
+
+            // 3. MANUAL JUMP BUTTON LOGIC
+            document.getElementById('sync-btn').addEventListener('click', () => {
+                const commands = [
+                    { command: "seeked", value: lastKnownTime },
+                    { method: "seek", arg: lastKnownTime },
+                    { command: "play", value: lastKnownTime }
+                ];
+                
+                commands.forEach(cmd => {
+                    player.contentWindow.postMessage(JSON.stringify(cmd), "*");
+                });
+            });
+
         } else {
             document.body.innerHTML = "<h2 style='color:white;text-align:center;margin-top:20%;'>Missing Movie or Room ID</h2>";
         }

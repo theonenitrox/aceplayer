@@ -40,7 +40,7 @@
             player.src = `https://www.vidking.net/embed/movie/${movieId}`;
             const roomRef = ref(db, 'rooms/' + roomId);
 
-            // Listen for player events (Play/Pause/Seek) to update Firebase
+            // 1. LISTEN TO PLAYER (Update Firebase)
             window.addEventListener("message", (event) => {
                 try {
                     const msg = JSON.parse(event.data);
@@ -50,7 +50,6 @@
                             set(roomRef, {
                                 event: d.event,
                                 time: d.currentTime,
-                                user: "party_member",
                                 timestamp: Date.now()
                             });
                         }
@@ -58,18 +57,37 @@
                 } catch (e) {}
             });
 
-            // Listen for Firebase updates to sync the player
+            // 2. LISTEN TO FIREBASE (Update UI & try to Sync Player)
             onValue(roomRef, (snapshot) => {
                 const data = snapshot.val();
                 if (data) {
                     isRemoteUpdate = true;
-                    player.contentWindow.postMessage(JSON.stringify({
-                        command: data.event,
-                        value: data.time
-                    }), "*");
+
+                    // Try different command formats to catch the player's API
+                    const commands = [
+                        { command: data.event, value: data.time },
+                        { method: data.event, arg: data.time },
+                        { event: 'command', func: data.event, args: [data.time] }
+                    ];
                     
-                    // Reset flag after a short delay to allow manual control again
-                    setTimeout(() => { isRemoteUpdate = false; }, 1000);
+                    commands.forEach(cmd => {
+                        player.contentWindow.postMessage(JSON.stringify(cmd), "*");
+                    });
+
+                    // Update the Status Bar overlay
+                    let statusDiv = document.getElementById('sync-status');
+                    if (!statusDiv) {
+                        statusDiv = document.createElement('div');
+                        statusDiv.id = 'sync-status';
+                        statusDiv.style = "position:fixed; top:10px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.8); color:white; padding:8px 20px; border-radius:20px; font-family:sans-serif; z-index:1000; font-size: 14px; border: 1px solid #444;";
+                        document.body.appendChild(statusDiv);
+                    }
+                    
+                    const minutes = Math.floor(data.time / 60);
+                    const seconds = Math.floor(data.time % 60).toString().padStart(2, '0');
+                    statusDiv.innerText = `Party Status: ${data.event.toUpperCase()} at ${minutes}:${seconds}`;
+
+                    setTimeout(() => { isRemoteUpdate = false; }, 1500);
                 }
             });
         } else {

@@ -10,50 +10,58 @@
             --bg-blur: rgba(15, 15, 15, 0.85);
         }
         body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: #000; font-family: 'Inter', -apple-system, sans-serif; }
-        iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
         
+        #app-container {
+            display: flex;
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        #player-container {
+            flex: 1;
+            position: relative;
+            height: 100%;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background: #000;
+        }
+
+        iframe { width: 100%; height: 100%; border: none; }
+
         #status-overlay {
             position: fixed;
             top: 20px;
             right: 20px;
             background: var(--bg-blur);
-            backdrop-filter: blur(5px);
+            backdrop-filter: blur(10px);
             color: #fff;
             padding: 8px 16px;
             border-radius: 8px;
             font-size: 13px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--theme-color);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
             z-index: 1000;
             display: flex;
             align-items: center;
             gap: 10px;
-            transition: opacity 0.3s;
+            transition: all 0.3s;
         }
 
-        .dot {
-            height: 6px;
-            width: 6px;
-            background-color: var(--theme-color);
-            border-radius: 50%;
-            display: inline-block;
-            box-shadow: 0 0 8px var(--theme-color);
-        }
+        .dot { height: 8px; width: 8px; background-color: var(--theme-color); border-radius: 50%; display: inline-block; box-shadow: 0 0 10px var(--theme-color); }
 
-        /* Chat UI */
         #chat-drawer {
-            position: fixed;
-            top: 0; right: -320px;
-            width: 300px; height: 100%;
+            width: 0;
+            height: 100%;
             background: var(--bg-blur);
-            backdrop-filter: blur(10px);
-            border-left: 1px solid rgba(255, 255, 255, 0.1);
-            z-index: 1001;
+            backdrop-filter: blur(15px);
             transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             display: flex;
             flex-direction: column;
             color: white;
+            transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            overflow: hidden;
         }
-        #chat-drawer.open { right: 0; }
+        #chat-drawer.open { width: 320px; border-left: 1px solid var(--theme-color); }
         
         #chat-toggle {
             position: fixed;
@@ -68,47 +76,71 @@
         }
 
         #messages { flex: 1; overflow-y: auto; padding: 15px; display: flex; flex-direction: column; gap: 10px; }
-        .msg { background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; border-left: 3px solid transparent; }
+        #messages::-webkit-scrollbar { width: 4px; }
+        #messages::-webkit-scrollbar-thumb { background: var(--theme-color); border-radius: 10px; }
+        
+        .msg { background: rgba(255,255,255,0.05); padding: 8px 12px; border-radius: 8px; font-size: 13px; cursor: pointer; border-left: 3px solid transparent; transition: 0.2s; }
         .msg:hover { border-left-color: var(--theme-color); background: rgba(255,255,255,0.08); }
         .msg-header { display: flex; justify-content: space-between; margin-bottom: 4px; opacity: 0.7; font-size: 11px; }
         .msg-author { font-weight: bold; color: var(--theme-color); }
-        .msg-reply { font-size: 11px; opacity: 0.6; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 4px; margin-bottom: 4px; }
+        .msg-reply { font-size: 11px; opacity: 0.6; padding: 4px; background: rgba(0,0,0,0.2); border-radius: 4px; margin-bottom: 4px; border-left: 2px solid var(--theme-color); }
 
         #chat-input-container { padding: 15px; border-top: 1px solid rgba(255,255,255,0.1); }
         #reply-preview { font-size: 11px; padding: 5px; background: var(--theme-color); border-radius: 4px 4px 0 0; display: none; }
-        #chat-input { width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 8px; border-radius: 4px; box-sizing: border-box; }
+        #chat-input { 
+            width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); 
+            color: white; padding: 10px; border-radius: 4px; box-sizing: border-box; transition: border 0.3s;
+        }
+        #chat-input:focus { outline: none; border-color: var(--theme-color); box-shadow: 0 0 8px var(--theme-color); }
 
         /* Theme Mixer */
-        #theme-btn { position: fixed; bottom: 80px; right: 20px; background: var(--bg-blur); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 50%; cursor: pointer; z-index: 1000; }
-        #color-mixer { position: fixed; bottom: 130px; right: 20px; background: var(--bg-blur); padding: 10px; border-radius: 8px; display: none; flex-direction: column; gap: 8px; z-index: 1000; }
+        #theme-btn { 
+            position: fixed; bottom: 20px; left: 20px; 
+            background: var(--bg-blur); border: 1px solid var(--theme-color); 
+            color: white; padding: 12px; border-radius: 50%; cursor: pointer; z-index: 1000;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3); transition: transform 0.2s;
+        }
+        #theme-btn:hover { transform: scale(1.1); }
+        #color-mixer { 
+            position: fixed; bottom: 80px; left: 20px; 
+            background: var(--bg-blur); padding: 12px; border-radius: 8px; 
+            display: none; flex-direction: column; gap: 8px; z-index: 1000;
+            border: 1px solid var(--theme-color);
+        }
+        #theme-picker { cursor: pointer; border: none; background: none; width: 40px; height: 40px; }
     </style>
 </head>
 <body>
-    <iframe id="player" src="" allowfullscreen></iframe>
+    <div id="app-container">
+        <div id="player-container">
+            <iframe id="player" src="" allowfullscreen></iframe>
+            
+            <div id="status-overlay">
+                <span class="dot"></span>
+                <span id="clock-text">WAITING FOR HOST</span>
+            </div>
+
+            <button id="theme-btn">🎨</button>
+            <div id="color-mixer">
+                <label style="font-size: 11px; color: white; font-weight: bold;">ACCENT COLOR</label>
+                <input type="color" id="theme-picker" value="#ff4b4b">
+            </div>
+        </div>
+
+        <div id="chat-drawer">
+            <div style="padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
+                <span style="font-weight: bold; font-size: 14px; letter-spacing: 1px; color: var(--theme-color);">ROOM CHAT</span>
+                <button id="edit-name" style="background: none; border: 1px solid var(--theme-color); color: white; font-size: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer;">NAME</button>
+            </div>
+            <div id="messages"></div>
+            <div id="chat-input-container">
+                <div id="reply-preview"></div>
+                <input type="text" id="chat-input" placeholder="Say something...">
+            </div>
+        </div>
+    </div>
     
-    <div id="status-overlay">
-        <span class="dot"></span>
-        <span id="clock-text">WAITING FOR HOST</span>
-    </div>
-
-    <button id="theme-btn">🎨</button>
-    <div id="color-mixer">
-        <label style="font-size: 11px; color: white;">Theme Color</label>
-        <input type="color" id="theme-picker" value="#ff4b4b">
-    </div>
-
     <button id="chat-toggle">💬</button>
-    <div id="chat-drawer">
-        <div style="padding: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-weight: bold;">Room Chat</span>
-            <button id="edit-name" style="background: none; border: 1px solid var(--theme-color); color: white; font-size: 10px; padding: 2px 6px; border-radius: 4px; cursor: pointer;">NAME</button>
-        </div>
-        <div id="messages"></div>
-        <div id="chat-input-container">
-            <div id="reply-preview"></div>
-            <input type="text" id="chat-input" placeholder="Type a message...">
-        </div>
-    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";

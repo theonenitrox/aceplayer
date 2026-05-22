@@ -283,7 +283,12 @@
             completeLogin('Guest_' + Math.floor(Math.random()*9000 + 1000));
         };
 
-        loginInput.onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('login-btn').click(); };
+        loginInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('login-btn').click();
+            }
+        });
 
         const applyTheme = (color) => {
             document.documentElement.style.setProperty('--theme-color', color);
@@ -318,14 +323,14 @@
 
         // --- PRESENCE LOGIC ---
         const updatePresence = () => {
-            if (!roomId) return;
+            if (!roomId || !userName) return;
             const myPresenceRef = ref(db, `screenshareRooms/${roomId}/users/${mySessionId}`);
             set(myPresenceRef, { name: userName });
             onDisconnect(myPresenceRef).remove();
         };
 
         if (roomId) {
-            updatePresence();
+            if (userName) updatePresence();
             onValue(ref(db, `screenshareRooms/${roomId}/users`), (snapshot) => {
                 const users = snapshot.val() || {};
                 const userArray = Object.values(users).map(u => u.name);
@@ -352,7 +357,12 @@
             replyPreview.style.display = 'none';
         };
 
-        chatInput.onkeydown = (e) => { if (e.key === 'Enter') sendMessage(); };
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
 
         let lastMsgSender = null;
         let lastMsgElement = null;

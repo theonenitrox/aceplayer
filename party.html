@@ -29,9 +29,9 @@
         iframe { width: 100%; height: 100%; border: none; }
 
         #status-overlay {
-            position: fixed;
+            position: absolute;
             top: 20px;
-            right: 20px;
+            left: 20px;
             background: var(--bg-blur);
             backdrop-filter: blur(10px);
             color: #fff;
@@ -45,6 +45,7 @@
             align-items: center;
             gap: 10px;
             transition: all 0.3s;
+            pointer-events: none;
         }
 
         .dot { height: 8px; width: 8px; background-color: var(--theme-color); border-radius: 50%; display: inline-block; box-shadow: 0 0 10px var(--theme-color); }
@@ -161,6 +162,12 @@
                 <span style="font-weight: bold; font-size: 14px; letter-spacing: 1px; color: var(--theme-color);">ROOM CHAT</span>
                 <button id="edit-name" style="background: none; border: 1px solid var(--theme-color); color: white; font-size: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer;">NAME</button>
             </div>
+            <div id="presence-info" style="padding: 10px 15px; font-size: 11px; background: rgba(0,0,0,0.2); border-bottom: 1px solid rgba(255,255,255,0.05); color: rgba(255,255,255,0.6);">
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Active Users: <b id="user-count" style="color: var(--theme-color);">0</b></span>
+                </div>
+                <div id="user-names-list" style="margin-top: 5px; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Connecting...</div>
+            </div>
             <div id="messages"></div>
             <div id="chat-input-container">
                 <div id="reply-preview"></div>
@@ -185,7 +192,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, push, serverTimestamp, onChildAdded, get } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, push, serverTimestamp, onChildAdded, get, onDisconnect } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDes-nr81QpdTeDXHxUJyxuThqnBqOnBfs",
@@ -231,8 +238,27 @@
             if (newName) {
                 userName = newName;
                 localStorage.setItem('party-name', userName);
+                updatePresence();
             }
         };
+
+        // --- PRESENCE LOGIC ---
+        const updatePresence = () => {
+            if (!roomId || !userName) return;
+            const myPresenceRef = ref(db, `rooms/${roomId}/users/${mySessionId}`);
+            set(myPresenceRef, { name: userName });
+            onDisconnect(myPresenceRef).remove();
+        };
+
+        if (roomId) {
+            if (userName) updatePresence();
+            onValue(ref(db, `rooms/${roomId}/users`), (snapshot) => {
+                const users = snapshot.val() || {};
+                const userArray = Object.values(users).map(u => u.name);
+                document.getElementById('user-count').innerText = userArray.length;
+                document.getElementById('user-names-list').innerText = userArray.join(', ');
+            });
+        }
 
         // --- LOGIN LOGIC ---
         const loginOverlay = document.getElementById('login-overlay');
@@ -242,6 +268,7 @@
             userName = name;
             localStorage.setItem('party-name', userName);
             loginOverlay.style.display = 'none';
+            updatePresence();
         };
 
         if (userName) {
@@ -258,7 +285,12 @@
             completeLogin('Guest_' + Math.floor(Math.random()*9000 + 1000));
         };
 
-        loginInput.onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('login-btn').click(); };
+        loginInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                document.getElementById('login-btn').click();
+            }
+        });
 
         // --- CHAT LOGIC ---
         const sendMessage = () => {
@@ -278,7 +310,12 @@
             replyPreview.style.display = 'none';
         };
 
-        chatInput.onkeydown = (e) => { if (e.key === 'Enter') sendMessage(); };
+        chatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
 
         let lastMsgSender = null;
         let lastMsgElement = null;

@@ -27,6 +27,8 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            padding: 40px;
+            box-sizing: border-box;
         }
 
         #screen-video { 
@@ -34,12 +36,16 @@
             height: 100%; 
             object-fit: contain; /* Ensures the entire screen is visible */
             background-color: black;
+            border: 2px solid var(--theme-color);
+            border-radius: 12px;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.8), 0 0 15px var(--theme-color);
+            max-height: 80vh;
         }
 
         #status-overlay {
-            position: fixed;
+            position: absolute;
             top: 20px;
-            right: 20px;
+            left: 20px;
             background: var(--bg-blur);
             backdrop-filter: blur(10px);
             color: #fff;
@@ -53,6 +59,7 @@
             align-items: center;
             gap: 10px;
             transition: all 0.3s;
+            pointer-events: none;
         }
 
         .dot { height: 8px; width: 8px; background-color: var(--theme-color); border-radius: 50%; display: inline-block; box-shadow: 0 0 10px var(--theme-color); }
@@ -117,6 +124,20 @@
         }
         #theme-picker { cursor: pointer; border: none; background: none; width: 40px; height: 40px; }
 
+        /* Login Overlay */
+        #login-overlay {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.9); backdrop-filter: blur(15px);
+            z-index: 2000; display: flex; align-items: center; justify-content: center;
+        }
+        .login-box {
+            background: var(--bg-blur); padding: 30px; border-radius: 12px;
+            border: 1px solid var(--theme-color); text-align: center; color: white;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5); width: 300px;
+        }
+        .login-input { width: 100%; padding: 12px; margin: 15px 0; background: rgba(0,0,0,0.5); border: 1px solid rgba(255,255,255,0.2); color: white; border-radius: 6px; box-sizing: border-box; }
+        .login-input:focus { outline: none; border-color: var(--theme-color); }
+
         #screenshare-controls {
             position: absolute;
             bottom: 20px;
@@ -170,6 +191,12 @@
                 <span style="font-weight: bold; font-size: 14px; letter-spacing: 1px; color: var(--theme-color);">ROOM CHAT</span>
                 <button id="edit-name" style="background: none; border: 1px solid var(--theme-color); color: white; font-size: 10px; padding: 4px 8px; border-radius: 4px; cursor: pointer;">NAME</button>
             </div>
+            <div id="presence-info" style="padding: 10px 15px; font-size: 11px; background: rgba(0,0,0,0.2); border-bottom: 1px solid rgba(255,255,255,0.05); color: rgba(255,255,255,0.6);">
+                <div style="display: flex; justify-content: space-between;">
+                    <span>Active Users: <b id="user-count" style="color: var(--theme-color);">0</b></span>
+                </div>
+                <div id="user-names-list" style="margin-top: 5px; font-style: italic; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">Connecting...</div>
+            </div>
             <div id="messages"></div>
             <div id="chat-input-container">
                 <div id="reply-preview"></div>
@@ -178,12 +205,24 @@
         </div>
     </div>
     
+    <div id="login-overlay">
+        <div class="login-box">
+            <h2 style="color: var(--theme-color); margin-top: 0; letter-spacing: 1px;">SCREEN SHARE</h2>
+            <p style="font-size: 14px; opacity: 0.8;">Enter a nickname to join the room</p>
+            <input type="text" id="login-input" class="login-input" placeholder="Your name...">
+            <div style="display: flex; gap: 10px;">
+                <button id="login-btn" style="flex: 2; background: var(--theme-color); color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">Join Room</button>
+                <button id="guest-btn" style="flex: 1; background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.2); padding: 10px; border-radius: 6px; cursor: pointer;">Guest</button>
+            </div>
+        </div>
+    </div>
+
     <button id="chat-toggle">💬</button>
 
     <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
-        import { getDatabase, ref, set, onValue, push, serverTimestamp, onChildAdded, remove } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
+        import { getDatabase, ref, set, onValue, push, serverTimestamp, onChildAdded, remove, onDisconnect, get } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyDes-nr81QpdTeDXHxUJyxuThqnBqOnBfs", // Replace with your actual Firebase API Key
@@ -201,8 +240,35 @@
         const roomId = params.get('room');
         
         // --- USER & THEME STATE ---
-        let userName = localStorage.getItem('party-name') || 'User_' + Math.floor(Math.random()*1000);
-        let currentReply = null;
+        let userName = localStorage.getItem('party-name')
+        const mySessionId = Math.random().toString(36).substring(2, 11);
+
+        // --- LOGIN LOGIC ---
+        const loginOverlay = document.getElementById('login-overlay');
+        const loginInput = document.getElementById('login-input');
+        
+        const completeLogin = (name) => {
+            userName = name;
+            localStorage.setItem('party-name', userName);
+            loginOverlay.style.display = 'none';
+            updatePresence(); // Start presence now that we have a name
+        };
+
+        if (userName) {
+            loginOverlay.style.display = 'none';
+        }
+
+        document.getElementById('login-btn').onclick = () => {
+            const val = loginInput.value.trim();
+            if (val) completeLogin(val);
+            else alert("Please enter a name or join as a guest.");
+        };
+
+        document.getElementById('guest-btn').onclick = () => {
+            completeLogin('Guest_' + Math.floor(Math.random()*9000 + 1000));
+        };
+
+        loginInput.onkeydown = (e) => { if (e.key === 'Enter') document.getElementById('login-btn').click(); };
 
         const applyTheme = (color) => {
             document.documentElement.style.setProperty('--theme-color', color);
@@ -231,8 +297,27 @@
             if (newName) {
                 userName = newName;
                 localStorage.setItem('party-name', userName);
+                updatePresence();
             }
         };
+
+        // --- PRESENCE LOGIC ---
+        const updatePresence = () => {
+            if (!roomId) return;
+            const myPresenceRef = ref(db, `screenshareRooms/${roomId}/users/${mySessionId}`);
+            set(myPresenceRef, { name: userName });
+            onDisconnect(myPresenceRef).remove();
+        };
+
+        if (roomId) {
+            updatePresence();
+            onValue(ref(db, `screenshareRooms/${roomId}/users`), (snapshot) => {
+                const users = snapshot.val() || {};
+                const userArray = Object.values(users).map(u => u.name);
+                document.getElementById('user-count').innerText = userArray.length;
+                document.getElementById('user-names-list').innerText = userArray.join(', ');
+            });
+        }
 
         // --- CHAT LOGIC (Identical to party.html) ---
         const sendMessage = () => {
@@ -305,15 +390,25 @@
             if (isHostActive && !localStream) {
                 statusText.innerText = "HOST IS LIVE. CONNECTING...";
                 joinAsViewer();
+                startShareBtn.disabled = true;
+                startShareBtn.style.opacity = "0.5";
             } else if (!isHostActive && !localStream) {
                 statusText.innerText = "WAITING FOR SHARER...";
                 screenVideo.srcObject = null;
+                startShareBtn.disabled = false;
+                startShareBtn.style.opacity = "1";
             }
         });
 
         // START SHARING (BECOME THE HOST)
         startShareBtn.onclick = async () => {
             try {
+                const activeSnap = await get(hostStatusRef);
+                if (activeSnap.val()) {
+                    alert("Someone is already sharing in this room!");
+                    return;
+                }
+
                 localStream = await navigator.mediaDevices.getDisplayMedia({ 
                     video: { cursor: "always" }, 
                     audio: true 
@@ -351,18 +446,19 @@
             peer = new Peer(); // Viewers get random IDs
 
             peer.on('open', () => {
-                // Call the host. We send an empty MediaStream as viewers.
-                const call = peer.call(hostId, new MediaStream());
-                
-                call.on('stream', (remoteStream) => {
-                    screenVideo.srcObject = remoteStream;
-                    statusText.innerText = "VIEWING LIVE";
-                });
+                // Add small timeout to ensure host's PeerJS ID is fully registered on the cloud server
+                setTimeout(() => {
+                    const call = peer.call(hostId, new MediaStream());
+                    call.on('stream', (remoteStream) => {
+                        screenVideo.srcObject = remoteStream;
+                        statusText.innerText = "VIEWING LIVE";
+                    });
 
-                call.on('error', (err) => {
-                    console.error("Peer error:", err);
-                    statusText.innerText = "CONNECTION ERROR";
-                });
+                    call.on('error', (err) => {
+                        console.error("Peer error:", err);
+                        statusText.innerText = "CONNECTION ERROR";
+                    });
+                }, 1000);
             });
         }
 
